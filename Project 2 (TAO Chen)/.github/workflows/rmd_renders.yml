@@ -1,0 +1,23 @@
+on:
+  push:
+    paths:
+    - 'proj2.Rmd'
+name: Check RMarkdown Renders
+jobs:
+  check:
+    runs-on: self-hosted
+    container:
+      image: ghcr.io/statprog-s1-2020/proj2-docker:main
+    steps:
+    - name: Checkout
+      uses: actions/checkout@master
+    - name: Install Missing Packages
+      run: |
+        missing = checklist::missing_pkgs(dir = "./", glob = "proj2.Rmd")
+        if (length(missing) > 0)
+          install.packages(pkgs = missing)
+      shell: Rscript {0}
+    - name: Check Renders
+      run: |
+        checklist::check_rmd_renders("proj2.Rmd")
+      shell: Rscript {0}
