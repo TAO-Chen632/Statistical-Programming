@@ -1,0 +1,400 @@
+---
+title: "hw4.Rmd"
+author:
+- Aurora Wu - s2018109@ed.ac.uk
+- Naomi Shakesheff - s2093080@ed.ac.uk
+- Rao Miao - s2045476@ed.ac.uk
+- Tao Chen - s2022911@ed.ac.uk
+output:
+  html_document: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rcompanion)
+library(MASS)
+library(tidyverse)
+```
+
+For this homework, we use the data frame `cars`, which is composed of two columns, `speed` and `dist` which represent the speed 50 cars were traveling at and their stopping distances when signaled to stop. 
+
+The data given in the `cars` data frame can be modelled using:
+$$
+{\tt dist}_i = \beta_1 + \beta_2{\tt speed}_i + \beta_3 {\tt speed}_i^2 + \epsilon_i,
+$$
+which is a linear model with $\beta_j$ representing the parameters, and $\epsilon_i$ representing the error of the model, which are random variables with mean zero.
+
+```{r plot number 1, fig.dim = c(8,4)}
+
+par(mfrow = c(1,2))
+x = cars$speed
+plot(x, cars$dist, xlab = "Speed", ylab = "Distance", main = "Plot of distance v. speed")
+m = lm(cars$dist ~ x + I(x^2))
+curve(coef(m)[1] + coef(m)[2]*x + coef(m)[3]*x^2, col = 2, add = TRUE)
+plot(predict(m), residuals(m), main = "Predictions v. residuals")
+
+```
+
+Above, we plot the original data set (distance v. speed), along with a curved line representing our model as specified above.
+Our model fit is illustrated using the second plot, of the predictions v. the residuals of our model. As the residuals seem to violate the assumption we make using linear models, namely that the variance of our errors are constant, (we see this as the points do not stay in a same-width band as we move across the x-axis) we can see that we are not using a very suitable model here. 
+
+As a result, the rest of our document shows two different ways to make inferences about the model coefficients $\beta_j$, namely a Bayesian approach involving bootstrapping to obtain confidence intervals for our model coefficients, and secondly, using Metropolis Hastings sampling and treating the distances as gamma random variables, which gives us a slightly changed model.
+
+### Bootstrapping the linear model
+
+Here we generate 1000 bootstrap replicate estimates from the coefficient vector of the cars model.
+We then show graphically via histograms the resulting parameter estimate distributions, and calculate the 95% confidence intervals and mean for each parameter.
+
+```{r Task 1 Part 1}
+# Generating 1000 bootstrap replicate estimates of the cars model coefficient vector
+set.seed(1) # Keeping randomness the same each time
+n = nrow(cars) # How many observations do we have
+nb = 1000 # Number of bootstrap replicate estimates we want to perform
+
+# Initialising coefficient vectors full of zeros with length nb
+beta = matrix(0, 3, nb) 
+
+# Bootstrap loop
+for (i in 1:nb) { 
+  cars_sample = sample(1:n, n, replace = TRUE) # Re-sampling row indices
+  b = coef(lm(dist ~ speed + I(speed^2), data = cars[cars_sample,])) # Fit our model to the re-sampled data set (intercept included by default), and extract the coefficients
+  # Eventually takes each coefficient column from matrix b (once over whole loop) and puts into their individual vectors
+  beta[1, i] = b[1]; beta[2, i] = b[2]; beta[3, i] = b[3]
+}
+
+```
+
+```{r Task 1 Part 1b, fig.width = 8, fig.height = 2.5, echo = FALSE}
+par(mfrow = c(1, 3))
+# Graphically examining (via histograms) the resulting parameter estimate distributions
+plotNormalHistogram(  # Histogram of beta_1 estimate 
+  beta[1,],
+  breaks = 30,
+  prob = FALSE,
+  xlab = expression(beta[1]),
+  main = expression(paste("Histogram of ", beta[1], " with normal curve"))
+)
+
+plotNormalHistogram(  # Histogram of beta_2 estimate
+  beta[2,],
+  breaks = 30,
+  prob = FALSE,
+  xlab = expression(beta[2]),
+  main = expression(paste("Histogram of ", beta[2], " with normal curve"))
+)
+
+plotNormalHistogram(  # Histogram of beta_3 estimate
+  beta[3,],
+  breaks = 30,
+  prob = FALSE,
+  xlab = expression(beta[3]),
+  main = expression(paste("Histogram of ", beta[3], " with normal curve"))
+)
+```
+
+
+
+```{r Task 1 Part 1 CI}
+# Means of the parameters
+pm = rowMeans(beta)
+names(pm) = c("beta_1", "beta_2", "beta_3")
+pm
+
+# 95% Confidence intervals for the parameters
+ci = apply(beta, 1, quantile, prob = c(0.025, 0.975))
+colnames(ci) = c("beta_1", "beta_2", "beta_3")
+ci
+```
+
+As a conclusion, our histograms show that our $\beta_j$ parameter estimates seem to follow normal distributions. Our plots look reasonable also as they each centre around the mean value we calculated separately. 
+<br/>
+Our 95% confidence intervals (CI) show that for each $\beta_j$, the CI crosses 0. This means we cannot reject the underlying hypothesis that is assumed when constructing a confidence interval, that the coefficients in this case, $\beta_j$, could be 0.
+
+
+Now we propose a new model using our previous results, which removes the intercept from the previous model.
+<br/>
+From the first scatter plot shown, which plots distance v. speed, we can see that both speed and speed squared are fairly well positively correlated with distance.
+As a result, these explanatory variables could help us explain the distance variable.
+
+### Why do we remove $\beta_1$?
+#### Using previous results:
+From the 95% CI's we obtained, we found that for each $\beta_j$, the CI crosses 0. That means we cannot reject the hypothesis that $\beta_j$ could be 0.
+
+The mean of $\beta_1$ is around 2.6, with a large number of estimated values far away from the mean; the 95% confidence interval for $\beta_1$ is the widest. Due to this, we choose to develop a new model without the $\beta_1$ parameter, i.e we lose the intercept in our model.
+
+#### Using physics:
+In physics, we use the following formula to calculate the stopping distance:
+$$
+{distance}_{Stopping} ={distance}_{Thinking} + {distance}_{Braking}.
+$$
+${distance}_{Thinking}$, the thinking distance, is the distance the car travels from the point the driver wants to stop until the driver actually begins braking. This reaction time is taken as a constant and we use the following formula to calculate it:
+$$
+{distance}_{Thinking} = time_{Thinking} \times speed.
+$$
+As the braking until the car stops removes the kinetic energy, we have:
+$$
+braking force \times distance = kinetic energy = 1/2 \times mass \times (speed)^2.
+$$
+Hence,
+$$
+distance_{Braking} = 1/2 \times mass \times (braking force)^{-1} \times (speed)^2.
+$$
+As for each car, we have thinking time, its mass, and maximum braking force as constants, we are expected to have 
+$$
+{\tt dist}_i = \beta_2{\tt speed}_i + \beta_3 {\tt speed}_i^2 
+$$
+for some parameters $\beta_2$ and $\beta_3$.
+
+
+
+```{r Task 1 Part 2 - Removal of beta 1, include = FALSE}
+
+# Initializing coefficient vectors full of zeros with length nb, only for speed and speed squared variables
+beta_2 = rep(0, nb) 
+beta_3 = rep(0, nb)
+
+# Bootstrap loop
+for (i in 1:nb) { 
+  cars_sample = sample(1:n, n, replace = TRUE) # Re-sampling row indices
+  
+  b = coef(lm(dist ~ 0 + speed + I(speed^2), data = cars[cars_sample,])) # Fit our model to the re-sampled data set (intercept included by default), and extract the coefficients 
+
+  # Eventually takes each coefficient column from matrix b (once over whole loop) and put into their individual vectors
+  beta_2[i] = b[1]
+  beta_3[i] = b[2]
+}
+
+# 95% Confidence intervals for the parameters
+CI_beta2 = quantile(beta_2, c(0.025, 0.975))
+CI_beta3 = quantile(beta_3, c(0.025, 0.975))
+
+```
+
+We again use the bootstrap to obtain 95% confidence intervals for our modified model's coefficients: 
+
+```{r Task 1 Part 2 - Removal of beta 1, resulting CIs}
+
+CI_beta2
+CI_beta3
+
+```
+
+The 95% CI for both $\beta_2$ and $\beta_3$ now do not cross 0. This is good because now we can reject the null hypotheses, and hence the variables associated with each coefficient are viewed as significant ($speed$ and $speed^{2}$) here, and worthy of inclusion in our model.
+
+
+
+## A gamma model for the cars data
+
+
+In the below we construct a log likelihood function to evaluate our new given model:
+$$
+E({\tt dist}_i) = \beta_1 + \beta_2{\tt speed}_i + \beta_3 {\tt speed}_i^2,
+$$
+where the distances are gamma distributed, with scale parameter $\phi$ and shape parameter then $E({\tt dist}_i)/\phi$.
+We use exponential parameterizations to ensure our $\beta_j$'s and $\phi$ remain positive, and then use a `dgamma` function using these parameters to get the relevant gamma probability density function, taking the log with `log = TRUE`, followed by the `sum` function over all our values in order to be able to get our maximum likelihood estimates later as a result.
+
+
+```{r Task 2 Part 1}
+
+# The log likelihood function
+log_likelihood = function(theta, speed, distance){
+  
+# Ensuring betas and phi remain positive, we use the following parameterisations:
+beta1 = exp(theta[1]); beta2 = exp(theta[2]); beta3 = exp(theta[3]); phi = exp(theta[4])
+  
+# Evaluating the log likelihood of the model with gamma distribution for the distances
+sum(dgamma(distance, shape = (beta1 + beta2*speed + beta3*speed^2) / phi, scale = phi, log = TRUE))
+}
+
+```
+
+We now implement a function to evaluate the log prior density for the random parameter vector $\theta$. The parameters $\theta_1$, $\theta_2$ and $\theta_3$ have normal prior distributions, with means -1, -0.1 and -1 respectively and all with standard deviation of 1, while an improper uniform prior is used for $\theta_4$. For $\theta_4$, we assume its uniform distribution is between 0 and 1. We construct the function in a similar way as we have seen above.
+
+```{r Task 2 Part 2}
+
+# Log prior probability density function
+log_prior = function(theta){
+  sum(dnorm(theta[1:3], mean = c(-1, -0.1, -1), sd = 1, log = TRUE))
+}
+
+```
+
+To generate a random sample from the posterior distribution, we implement the function `MHsample` for Metropolis Hastings sampling with a random walk proposal. 
+This function has at least these arguments:`theta`, an initial parameter vector; a function `ll` evaluating the log likelihood of the model parameters (further arguments to `ll` will be passed via the ... argument to `MHsample`); a function `lp` evaluating the log prior density of the model parameters; a vector `psd` of standard deviations for each component of the random walk proposal; `ns`, the number of samples to generate, and `thin` as an optional argument, the number of MH steps to take between each output of the state of the chain. 
+A matrix of parameter vectors simulated from the posterior distribution for the model is returned and the acceptance rate of the sampler is printed out.
+
+```{r Task 2 Part 3}
+
+set.seed(1) # For rnorm function used in MH sampler loop
+
+MHsample = function(theta, ll, ..., lp, psd, ns, thin = 1){ # Thin = 1 means we take every value
+  # Initialize some variables
+  th_sample = matrix(0, 4, ns) # Create an empty matrix with 4 rows and ns columns
+  th_sample[ ,1] = theta # Setting initial parameters
+  log_ll = ll(theta, ...) # Initial log likelihood
+  log_prior = lp(theta) # Initial log prior density
+  accept = 0 # Number of candidate values accepted; initialised here
+  
+  # MH sampler loop
+  for (i in 2:ns){
+    th_prop = th_sample[, i-1] + rnorm(4)*psd # Generate the candidate value from the proposal distribution
+    ll_prop = ll(th_prop, ...) # The log-likelihood of proposal
+    lp_prop = lp(th_prop) # The log-prior distribution of proposal
+    
+    if (runif(1) < exp(ll_prop + lp_prop - log_ll - log_prior)){ # If random number generated from U(0,1) less than MH ratio
+      # Accept the candidate value
+      th_sample[ , i] = th_prop; log_ll = ll_prop; log_prior = lp_prop # Update variables using proposals
+      accept = accept + 1 # Count this as a candidate value accepted
+    }
+    else{
+      # Reject the candidate value, hence:
+      th_sample[ , i] = th_sample[ , i - 1] # Use previous sample
+    }
+  }
+  th_sample = th_sample[ , seq(1, ns, thin)] # Thinning the sample
+  print(paste("The acceptance rate is: ", accept / ns)) # Printing acceptance rate
+  return(th_sample) # Returning matrix of parameter vectors simulated from models' posterior
+}
+
+```
+
+
+We now simulate from the posterior distribution of the model parameters, using the `MHsample` function defined above. After, we plot the figures displaying the changing tendency of parameters $\theta_{1}$, $\theta_{2}$, $\theta_{3}$ and $\theta_{4}$ respectively to to show the chain convergence. We also use the `acf` function to calculate the correlations of the sequence of the same parameter $\theta_{j}$'s to better examine chain mixing.
+The acceptance rate should roughly be around 0.25, and our result is around 0.3 which is acceptable.
+
+```{r Task 2 Part 4.1, fig.width = 8, fig.height = 5.5, echo = FALSE}
+# Here we use the initial proposed starting values for th0 and psd as given in question previously
+MHresult = MHsample(theta = log(c(2, 1, 0.1, 4)), ll = log_likelihood, speed = cars$speed, distance = cars$dist, lp = log_prior, psd = c(0.2, 0.2, 0.1, 0.04) * 1.5, ns = 10000, thin = 6)
+
+par(mfrow = c(4,1), mar = c(4,5,1,1))
+# Plots
+plot(MHresult[1,], type = "l", ylab = expression(theta[1]), cex.lab = 1.5)
+plot(MHresult[2,], type = "l", ylab = expression(theta[2]), cex.lab = 1.5)
+plot(MHresult[3,], type = "l", ylab = expression(theta[3]), cex.lab = 1.5)
+plot(MHresult[4,], type = "l", ylab = expression(theta[4]), cex.lab = 1.5)
+
+```
+
+```{r Task 2 Part 4.2, fig.width = 8, fig.height = 2.5, echo = FALSE}
+# Autocorrelation functions for each theta - changed 'thin' value to 6 as a result
+
+par(mfrow = c(1,4), mar = c(5,5,1,1))
+acf(MHresult[1,], cex.lab = 1.5, xlab = expression(paste("LAG: ", theta[1])))
+acf(MHresult[2,], cex.lab = 1.5, xlab = expression(paste("LAG: ", theta[2])))
+acf(MHresult[3,], cex.lab = 1.5, xlab = expression(paste("LAG: ", theta[3])))
+acf(MHresult[4,], cex.lab = 1.5, xlab = expression(paste("LAG: ", theta[4])))
+
+```
+
+Looking at the first group of plots, we want to see something representing independent draws - in this case the line should move up and down in a seemingly uncorrelated way. This seems to roughly be the case here.
+For the autocorrelation plots, we want our values to drop below the reference line (again to represent independent draws for each parameter) and show better mixing. Firstly we didn't see this, so we thinned out our data (increasing the `thin` parameter) to more closely achieve this.
+
+
+
+We now plot the prior densities of our model in red, against the histogram of the posterior distribution previously generated, in grey, all below. 
+
+
+```{r part 5 graph, fig.width = 8, fig.height = 6, echo = FALSE}
+par(mfrow = c(2, 2), mar = c(5, 4, 1, 1))
+
+# Plotting prior v. posterior distributions for each theta value
+
+# For theta 1
+hist(MHresult[1,], xlab = expression(theta[1]),
+     main = expression(paste("Prior and posterior densities of ", theta[1])), probability = TRUE)
+
+x = seq(min(MHresult[1,]), max(MHresult[1,]), length = 100) 
+y = dnorm(x, -1, 1)
+lines(x, y, col = "red")
+legend("topright",
+c("Posterior density","Prior density"),
+fill = c("grey","red")
+)
+
+# For theta 2
+hist(MHresult[2,], xlab = expression(theta[2]),
+     main = expression(paste("Prior and posterior densities of ", theta[2])), probability = TRUE)
+
+x = seq(min(MHresult[2,]), max(MHresult[2,]), length = 100) 
+y = dnorm(x, -.1, 1)
+lines(x, y, col = "red")
+legend("topleft",
+c("Posterior density","Prior density"),
+fill = c("grey","red")
+)
+
+# For theta 3
+hist(MHresult[3,], xlab=expression(theta[3]),
+     main=expression(paste("Prior and posterior densities of ", theta[3])), probability = TRUE)
+
+x = seq(min(MHresult[3,]), max(MHresult[3,]), length = 100) 
+y = dnorm(x, -1, 1)
+lines(x, y, col = "red")
+legend("topleft",
+c("Posterior density","Prior density"),
+fill = c("grey","red")
+)
+
+
+# For theta 4
+hist(MHresult[4,], xlab = expression(theta[4]),
+     main=expression(paste("Prior and posterior densities of ", theta[4])), probability = TRUE)
+
+x = seq(min(MHresult[4,]), max(MHresult[4,]), length = 100) 
+y = dunif(x, min(x), max(x))#density for uniform distribution
+lines(x, y, col = "red")
+legend("topright",
+c("Posterior density","Prior density"),
+fill = c("grey","red")
+)
+
+```
+
+From the plot of $\theta_1$, the prior distribution is $N(-1, 1)$, and the posterior density is similar to the prior density with similar mean and variance.
+From the plot of $\theta_2$, the prior distribution is $N(-0.1, 1)$, and the posterior density has the similar mean but the variance is reduced.
+From the plot of $\theta_3$, the prior distribution is $N(-1, 1)$, and the mean and variance of the posterior is smaller (range of $\theta_3$ is around -3.5 and -1.5).
+From the plot of $\theta_4$, the prior distribution is an improper uniform distribution, so it is unnecessary to compare the prior and posterior density of $\theta_4$.
+
+The reason the posterior density is often different to the prior density is because we update the distributions based on the data set; this means that often we see reduced variance as our certainty regarding the parameters increase. 
+In addition, we use function `quantile` to compute the 95% credible intervals of three $\beta_i$. The results are shown below.
+<br/>
+
+```{r Task 2 Part 5 CI}
+
+## 95% Credible Intervals for beta_j
+ci = apply(exp(MHresult[1:3,]), 1, quantile, prob = c(.025, .975))
+colnames(ci) = c("beta_1", "beta_2", "beta_3")
+ci
+
+```
+
+Finally, we plot in red, the original data points showing the relationship between distance and speed in data `cars`. Overlaid on this plot, we randomly select 100 sets of parameters from the simulated data `MHresult` generated previously, and plot the related curves of the posterior distribution of $E({\tt dist}_i)$ in blue.
+
+From the graph, we can see that variability in the model fits increases as we observe higher values for speed and distance. The model seems to fit the data well.
+<br/>
+
+```{r Task 2 Part 6, fig.width = 6, fig.height = 5, echo = FALSE}
+
+# Want to draw 100 samples
+nsamples = 100
+# Randomly choose the index
+index_sample = sample(1:ncol(MHresult), nsamples)
+
+# Plot the data we have from cars
+plot(cars$speed, cars$dist, col = "red", type = "p", xlab = "Speed", ylab = "Distance", main = "Relationship between speed and distance, \nillustrating the variability in the model fits")
+
+# Use the randomly chosen index to get the coefficient value from MHresult and then plot the curve
+speed_min = min(cars$speed)
+speed_max = max(cars$speed)
+x =  seq(speed_min, speed_max, length = 100)
+
+for (idx in index_sample){
+  y = exp(MHresult[1, idx]) + exp(MHresult[2, idx])*x + exp(MHresult[3, idx])*x^2
+  lines(x, y, col = alpha("blue", 0.3))
+}
+
+legend("topleft", c("Raw data","Posterior independent draws"), fill = c("red", "blue"))
+
+```
+
