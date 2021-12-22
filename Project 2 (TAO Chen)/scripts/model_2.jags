@@ -1,0 +1,11 @@
+model{
+  for (i in 1:N){
+    mu[i] <- beta_1 * speed[i] + beta_2 * speed[i]^2
+    tau[i] <- 1 / ((beta_3 + beta_4 * speed[i])^2)
+    dist[i] ~ dnorm(mu[i], tau[i])
+  }
+  beta_1 ~ dunif(0, 2.5)
+  beta_2 ~ dnorm(0, 0.01)
+  beta_3 ~ dunif(0, 20)
+  beta_4 ~ dunif(0, 2)
+}

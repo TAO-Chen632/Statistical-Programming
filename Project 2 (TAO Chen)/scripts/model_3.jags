@@ -1,0 +1,10 @@
+model{
+  for (i in 1:N){
+    mu[i] <- beta_1 * speed[i] + beta_2 * speed[i]^2
+    dist[i] ~ dgamma(mu[i] / phi, 1 / phi)
+  }
+  beta_1 ~ dunif(0, 2.5)
+  log_beta_2 ~ dnorm(-2, 0.01)
+  beta_2 <- exp(log_beta_2)
+  phi ~ dunif(0, 10)
+}
