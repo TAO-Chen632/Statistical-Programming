@@ -1,0 +1,240 @@
+---
+title: "Statisitcal Programming - 2020 - Project 1"
+output: rmarkdown::html_document
+author: Chen Tao
+---
+
+Due on Monday, November 2nd by 5:00 pm (17:00), UK local time.
+
+Before you start be sure to read through *all* of the rules and instructions in the `README.md`.
+
+<br/>
+
+### Data
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(knitr)
+f1 = readRDS(file = "data/f1.rds")
+```
+
+
+<br/>
+
+### Task 1 - Tidy the data
+
+#### Write up
+
+The data show the information about the results of 2019 Formula 1 racing season. I follow the instructions and create a tidy data frame `F1_df` from these data with seven columns `race_name`, `round`, `date`, `driver`, `constructor`, `position` and `points` whose types satisfy the requirement of this task. Each row of this data frame represents the result of a driver for a particular race.  
+
+I first convert the `f1` object to tibble type and search for useful information. To avoid making repeated use of `unnest_longer` and `unnest_wider` and creating unnecessary columns, I utilize `hoist()` function to extract required columns from nested lists, substituting for `unnest_wider`. I take out the columns `MRData` from `f1`, `RaceTable` from `MRData` and `Races` from `RaceTable` in turn. Then, I take the needed columns `race_name`, `round` and `date` out of `Races` after unnesting it longer. Next, after the column `Results` being unnested longer, I extract the useful information about the four remaining needed columns. After that, I carry out some necessary operations, and then the columns `position`, `points`, `driver` and `constructor` are set up. Finally, I convert the types of some columns from character to integer or date as required. I also assign `NA` to the values in the column `position` if the drivers did not finish the race.  
+
+Overall, `unnest_wider` is not used at all and `unnest_longer` is only used twice. Moreover, no additional useless columns are created in this process. The final version of the data frame meets all the requirements of the task.
+
+#### Code
+
+```{r task1}
+F1_df = tibble(f1 = f1) %>%
+  hoist(f1, MRData = "MRData") %>%
+  hoist(MRData, RaceTable = "RaceTable") %>%
+  hoist(RaceTable, Races = "Races") %>%
+  unnest_longer(Races) %>%
+  hoist(Races, race_name = "raceName", round = "round", date = "date", Results = "Results") %>%
+  unnest_longer(Results) %>%
+  hoist(Results, position = "position", positionText = "positionText", points = "points", Driver = "Driver", Constructor = "Constructor") %>%
+  hoist(Driver, GivenName = "givenName", FamilyName = "familyName") %>%
+  hoist(Constructor, constructor = "name") %>%
+  transmute(race_name, round = as.integer(round), date = as.Date(date), driver = paste(GivenName, FamilyName), constructor = constructor, position = ifelse(positionText %in% c("R", "D", "E", "W", "F", "N"), NA, as.integer(position)), points = as.integer(points))
+
+# The first ten rows of the data frame are printed out below and the structure of it can be viewed.
+# As required, the columns race_name, driver and constructor are character type, and the columns round, position and points are integer type and the column date is date class.
+
+kable(F1_df %>% slice(1:10))
+```
+
+<br/>
+
+
+### Task 2 - Drivers' Championship
+
+#### Write up
+
+In this part, I construct the table showing the World Drivers' Championship standings for this F1 season using the data frame from Task 1. This data frame has 23 columns, driver's names, finishing positions for each of the 21 races and finally the driver's total points for the season. The data frame is sorted in descending order of points total.  
+
+Firstly, I rename the race names for simplicity and select the columns `race_name`, `driver`, `position` and `points` which are relevant to this task. Then, I group by the variable `driver` and calculate the total points of each driver. After excluding the column of points for each race, I use the function `pivot_wider()` to convert the race names to the variable name of each column of the new data frame, under which the drivers' championship standings for this F1 season are listed. After relocating the column of drivers' total points and sorting by this column, the final version of the table is completed.
+
+#### Code
+
+```{r task2}
+# Because every race name has a suffix "Grand Prix" which is redundant, for simplicity, I use the country names to represent the race names. Also, to omit the spaces within the race names, I use "USA" and "AbuDhabi" to represent "United States" and "Abu Dhabi" respectively. Because the race names will appear as variable names in the data frame, such necessary changes will be very conducive to the neatness of the table and the convenience of indexing by variable names. Furthermore, this approach is also helpful to the need for sorting in Task 3 and 4.
+
+race_name_new = c("Australia", "Bahrain", "China", "Azerbaijan", "Spain", "Monaco", "Canada", "France", "Austria", "British", "Germany", "Hungary", "Belgium", "Italy", "Singapore", "Russia", "Japan", "Mexico", "USA", "Brazil", "AbuDhabi")
+
+championship = F1_df %>%
+  mutate(race_name = race_name_new[round]) %>%
+  select(race_name, driver, position, points) %>%
+  group_by(driver) %>%
+  mutate(total_points = sum(points)) %>%
+  select(-points) %>%
+  pivot_wider(names_from = race_name, values_from = position) %>%
+  relocate(total_points, .after = last_col()) %>%
+  arrange(desc(total_points))
+
+# Print out the nicely formatted version of the complete table.
+
+kable(championship)
+```
+
+<br/>
+
+### Task 3 - Cumulative Constructors
+
+#### Write up
+
+In this task, I, using the data frame from Task 1, construct the table that contains the cumulative points earned by each of the 10 constructors at the end of each of the 21 races of the 2019 F1 race season. This data frame has 22 columns, constructor's name and columns for each of the 21 grand prix races. The data frame is sorted in descending order of the constructors' total points at the end of the season.  
+
+Firstly, I construct the function that can perform cumulative operations of data frame. After renaming the race names as in task 2, I group by the variables of `race_name` and `constructor` and calculate the total points earned by each constructor in each race. Then, I convert the variable `race_name` to factor type and arrange the races by chronological order. Next, I use the function `pivot_wider()` to convert the race names to the variable name of each column of the new data frame, under which the constructors' total points for each race are listed. After that, I calculate the cumulative points of each constructor earned at the end of each race using the function `cumulate` defined at first. Finally, the final version of the table is completed after being sorted by the total points of constructors at the end of the season.
+
+#### Code
+
+```{r task3}
+# Construct the function that can perform the cumulative operation of data frame, which can be conveniently used in the next.
+
+cumulate = function(df, k){
+  for (i in k:ncol(df)){
+    df[i] = df[[i]] + df[[i-1]]
+  }
+  return(df)
+}
+
+cumulation = F1_df %>%
+  mutate(race_name = race_name_new[round]) %>%
+  group_by(race_name, constructor) %>%
+  summarise(total_points = sum(points), .groups = "drop") %>%
+  mutate(race_name = factor(race_name, levels = race_name_new)) %>%
+  arrange(race_name) %>%
+  pivot_wider(names_from = race_name, values_from = total_points) %>%
+  cumulate(3) %>%
+  arrange(desc(AbuDhabi))
+
+# Print out the nicely formatted version of the complete table.
+
+kable(cumulation)
+```
+
+<br/>
+
+### Task 4 - Visualization
+
+#### Write up
+
+In this part, I have designed the visualizations through three figures, a bar chart, a line chart and a scatter diagram, to show the performance of both drivers and teams over the 2019 F1 racing season in terms of their points and rankings. From these figures, we can also observe many interesting regularities behind the results of this season.  
+
+Figure 1 is a bar chart about the championship standings of drivers for this F1 racing season in terms of their total points, which is the most basic and important visualization of any competitions. This figure aims to display the final ranking of each driver in this season, from which we can view the overall performance of each driver. This bar chart is arranged in descending order, with the y and x axis representing the drivers and their total points respectively. It can be clearly seen from this bar chart that Lewis Hamilton is the champion of 2019 F1 racing season who had an excellent performance and left other drivers behind. Moreover, we can also see that the most points of this season were earned by the top five drivers and they left other 15 drivers far behind.  
+
+Figure 2 is a line chart that shows the increasing tendency of the cumulative points of every constructor, which displays all the information in the table of Task 3. This figure conveys us the information about the performance, standings and development of cumulative points of constructors. The lines are arranged in descending order with respect to the total points of constructors at the end of the season. From this chart, we can see that Mercedes is the strongest team whose cumulative points increase very fast and are much higher than other teams. Being similar with figure 1, we can also view that most points of this season are earned by the top three teams, Mercedes, Ferrari and Red Bull and they left other teams far behind. Moreover, what is worth being noticed is that the increase of the cumulative points of many teams are basically linear, which means the overall performance of these teams in each race does not have so much difference.  
+
+Figure 3 is a scatter diagram that displays the distribution of positions of each driver in the races, which can reveal many interesting regular patterns of this season. The x-axis stands for the drivers and is sorted in descending order of their final rankings. Meanwhile, the y-axis shows the positions obtained by each driver in the races, with the size of the dots indicating the times of the position that they obtained. We can see from this figure that for every driver, their average position of all the races is approximately their final ranking of this season. However, the variance of the positions of each driver in the races is also very large, meaning that the performance of the drivers is not stable throughout the season. For example, the champion of this season, Lewis Hamilton, has won the first positions more than ten times but the worst performance of him is the ninth in Germany Grand Prix.
+
+#### Code
+
+```{r task4}
+# Figure 1
+# Bar chart - The ranking list of drivers for 2019 F1 racing season
+
+# Organize the data frame
+championship %>%
+  select(driver, total_points) %>%
+  mutate(driver = factor(driver, levels = rev(championship$driver))) %>%
+  # Design the visualization of the bar chart
+  ggplot(
+    aes(
+      x = driver,
+      y = total_points
+    )
+  ) +
+  geom_col(
+    fill = "firebrick2"
+  ) +
+  labs(
+    title = "The final ranking list of drivers",
+    x = "Drivers",
+    y = "Total points"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5)
+  ) +
+  coord_flip()
+
+# Figure 2
+# Line chart - The increasing tendency of the cumulative points of every constructor
+
+# Organize the data frame
+cumulation %>%
+  mutate(constructor = factor(constructor, levels = cumulation$constructor)) %>%
+  pivot_longer(cols = Australia:AbuDhabi, names_to = "location", values_to = "score") %>%
+  # Design the visualization of the line chart
+  ggplot(
+    aes(
+      x = factor(location, levels = race_name_new),
+      y = score,
+      colour = constructor,
+      group = constructor
+    )
+  ) +
+  geom_line(
+    linetype = 1,
+    size = 1
+  ) +
+  labs(
+    title = "The tendency of constructors cumulative points",
+    x = "Grand Prix Races",
+    y = "Cumulative points",
+    col = "Constructor"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  ) +
+  scale_colour_manual(
+    values=rainbow(10)
+  )
+
+# Figure 3
+# Scatter diagram - The distribution of race positions of each driver in this season
+
+# Organize the data frame
+championship %>%
+  mutate(driver = factor(driver, levels = championship$driver)) %>%
+  pivot_longer(cols = Australia:AbuDhabi, names_to = "location", values_to = "position") %>%
+  group_by(driver) %>%
+  count(position, name = "Times") %>%
+  # Design the visualization of the scatter diagram
+  ggplot(
+    aes(
+      x = driver,
+      y = position
+    )
+  ) +
+  geom_point(
+    aes(
+      color = position,
+      size = Times
+    ),
+    na.rm = TRUE
+  ) +
+  labs(
+    title = "The positions of each driver in the season",
+    x = "Drivers",
+    y = "Positions",
+    col = c("Position", "Times")
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
+
+<br/>
+
