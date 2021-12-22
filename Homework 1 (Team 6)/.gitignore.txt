@@ -1,0 +1,9 @@
+.Rproj.user/
+*.Rdata
+*.rda
+.Rhistory
+.RData
+.Rproj.user
+hw1.pdf
+hw1.md
+hw1.html
