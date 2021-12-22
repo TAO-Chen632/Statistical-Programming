@@ -1,0 +1,255 @@
+---
+title: "Homework 1"
+output: html_document
+author: 
+- Maja Blomberg
+- Chen Tao
+- Chao Yang
+- Yuan Hu
+---
+
+### Task 1 - Implement fizzbuzz
+
+#### Write up
+
+In this section, we write a function that given a vector of numbers as input, returns a new vector that contains the original values. The numbers with multiples of three are replaced by "Fizz", with multiples of five are replaced by "Buzz", and numbers which are multiples of both three and five are replaced by "FizzBuzz". We tried our best to meet all the detailed requirements and make sure that all error messages are informative.
+
+#### Function
+```{r fizzbuzz}
+fizzbuzz = function(input){
+if (is.numeric(input)==FALSE){
+stop("All input values must be numbers.")
+}
+else if (NaN%in%input){
+stop("All input values must be numbers.")
+}
+else if (Inf %in% input | -Inf %in% input){
+stop("All input values must be finite.")
+}
+else if (any(input%%1!=0)){
+stop("All input values must be able to coerced to integer without rounding or truncating.")
+}
+else if (any(input<0)){
+stop("All input values must be greater than or equal to zero.")
+}
+else{
+output=vector()
+for (i in 1:length(input)){
+    if (input[i]%%3 == 0 & input[i]%%5 == 0){
+        output[i]="FizzBuzz"
+    }
+    else if (input[i]%%3 == 0){
+        output[i]="Fizz"
+    }
+    else if (input[i]%%5 == 0){
+        output[i]="Buzz"
+    }
+    else{
+        output[i]=as.character(input[i])
+    }
+}
+return(output)
+}
+}
+```
+
+
+### Task 2 - Re-Implement fizzbuzz
+
+#### Write up
+
+In this section, we re-implement the function $fizzbuzz$ in Task 1 to have a new version of implementation, using the R's S3 object system which is the simplest and most commonly used object oriented system of R. The new function $fizzbuzz\_s3$ satisfies all the requirements for $fizzbuzz$ and it is a more efficient and readable version. The inputs from all kinds of classes are respectively tackled by different methods decided by the generic function $fizzbuzz\_s3$, which makes the code implementation more elegant and cleaner.
+
+#### Function
+
+```{r fizzbuzz_s3}
+fizzbuzz_s3 = function(input){
+UseMethod("fizzbuzz_s3")
+}
+fizzbuzz_s3.default = function(input){
+stop("Input must be a numeric vector:\n
+✖ You have supplied a vector of other modes.",call. = FALSE)
+}
+fizzbuzz_s3.integer = function(input){
+if (any(input<0)){
+stop("All input values must be nonnegative:\n
+✖ You have supplied negative values in the input.",call. = FALSE)
+}
+else{
+x=input[input%%3==0]
+y=input[input%%5==0]
+z=input[input%%15==0]
+as.character(input)
+input[input%in%as.character(z)]="FizzBuzz"
+input[input%in%as.character(x)]="Fizz"
+input[input%in%as.character(y)]="Buzz"
+return(input)
+}
+}
+fizzbuzz_s3.double = function(input){
+if (NaN%in%input){
+stop("All input values must be numbers:\n
+✖ You have supplied non-numerical values in the input.",call. = FALSE)
+}
+else if (Inf %in% input | -Inf %in% input){
+stop("All input values must be finite:\n
+✖ You have supplied infinite values in the input.",call. = FALSE)
+}
+else if (any(input%%1!=0)){
+stop("All input values must be able to coerced to integer without rounding or truncating:\n
+✖ You have supplied values with demicals in the input.",call. = FALSE)
+}
+else if (any(input<0)){
+stop("All input values must be nonnegative:\n
+✖ You have supplied negative values in the input.",call. = FALSE)
+}
+else{
+x=input[input%%3==0]
+y=input[input%%5==0]
+z=input[input%%15==0]
+as.character(input)
+input[input%in%as.character(z)]="FizzBuzz"
+input[input%in%as.character(x)]="Fizz"
+input[input%in%as.character(y)]="Buzz"
+return(input)
+}
+}
+fizzbuzz_s3.complex = function(input){
+stop("All input values must be real:\n
+✖ You have supplied complex values in the input.",call. = FALSE)
+}
+```
+
+
+### Task 3 - Testing
+
+#### Write up
+
+In this section, we test the $fizzbuzz$ and $fizzbuzz\_s3$ functions from Task 1 and Task 2 respectively, in order to check for correctness. We use the $stopifnot()$ function, through both good and bad inputs, to prove that the functions $fizzbuzz$ and $fizzbuzz\_s3$ meet all of the requirements described in the project.
+
+#### Good Inputs
+
+```{r good_inputs, error = TRUE}
+
+stopifnot( fizzbuzz(0)  == "FizzBuzz"       )
+stopifnot( fizzbuzz(0.0)  == "FizzBuzz"       )
+stopifnot( fizzbuzz(1)  == "1"       )
+stopifnot( fizzbuzz(1.0)  == "1"       )
+stopifnot( fizzbuzz(3)  == "Fizz"    )
+stopifnot( fizzbuzz(3.0)  == "Fizz"    )
+stopifnot( fizzbuzz(5)  == "Buzz"    )
+stopifnot( fizzbuzz(5.0)  == "Buzz"    )
+stopifnot( fizzbuzz(15) == "FizzBuzz")
+stopifnot( fizzbuzz(15.0) == "FizzBuzz")
+
+stopifnot( fizzbuzz_s3(0)  == "FizzBuzz"       )
+stopifnot( fizzbuzz_s3(0.0)  == "FizzBuzz"       )
+stopifnot( fizzbuzz_s3(1)  == "1"       )
+stopifnot( fizzbuzz_s3(1.0)  == "1"       )
+stopifnot( fizzbuzz_s3(3)  == "Fizz"    )
+stopifnot( fizzbuzz_s3(3.0)  == "Fizz"    )
+stopifnot( fizzbuzz_s3(5)  == "Buzz"    )
+stopifnot( fizzbuzz_s3(5.0)  == "Buzz"    )
+stopifnot( fizzbuzz_s3(15) == "FizzBuzz")
+stopifnot( fizzbuzz_s3(15.0) == "FizzBuzz")
+
+stopifnot(all( fizzbuzz(0:3) == c("FizzBuzz","1", "2", "Fizz") ))
+stopifnot(all( fizzbuzz(1:5) == c("1", "2", "Fizz", "4", "Buzz") ))
+stopifnot(all( fizzbuzz(5:1) == c("Buzz", "4", "Fizz", "2", "1") ))
+stopifnot(all( fizzbuzz(3:9.0) == c("Fizz", "4", "Buzz", "Fizz", "7","8","Fizz") ))
+stopifnot(all( fizzbuzz(9.0:3.0) == c("Fizz", "8", "7", "Fizz", "Buzz","4","Fizz") ))
+stopifnot(all( fizzbuzz(9:15) == c("Fizz", "Buzz", "11", "Fizz", "13", "14", "FizzBuzz") ))
+stopifnot(all( fizzbuzz(15:9) == c("FizzBuzz", "14", "13", "Fizz", "11", "Buzz", "Fizz") ))
+stopifnot(all( fizzbuzz(c(1,5:9)) == c("1", "Buzz", "Fizz", "7","8","Fizz") ))
+stopifnot(all( fizzbuzz(c(30,15,5,3)) == c("FizzBuzz","FizzBuzz","Buzz","Fizz") ))
+stopifnot(all( fizzbuzz(c(1,2,4,7,8)) == c("1","2","4","7","8") ))
+stopifnot(all( fizzbuzz(c(31,29,23,19,17,13)) == c("31","29","23","19","17","13") ))
+
+stopifnot(all( fizzbuzz_s3(0:3) == c("FizzBuzz","1", "2", "Fizz") ))
+stopifnot(all( fizzbuzz_s3(1:5) == c("1", "2", "Fizz", "4", "Buzz") ))
+stopifnot(all( fizzbuzz_s3(5:1) == c("Buzz", "4", "Fizz", "2", "1") ))
+stopifnot(all( fizzbuzz_s3(3:9.0) == c("Fizz", "4", "Buzz", "Fizz", "7","8","Fizz") ))
+stopifnot(all( fizzbuzz_s3(9.0:3.0) == c("Fizz", "8", "7", "Fizz", "Buzz","4","Fizz") ))
+stopifnot(all( fizzbuzz_s3(9:15) == c("Fizz", "Buzz", "11", "Fizz", "13", "14", "FizzBuzz") ))
+stopifnot(all( fizzbuzz_s3(15:9) == c("FizzBuzz", "14", "13", "Fizz", "11", "Buzz", "Fizz") ))
+stopifnot(all( fizzbuzz_s3(c(1,5:9)) == c("1", "Buzz", "Fizz", "7","8","Fizz") ))
+stopifnot(all( fizzbuzz_s3(c(30,15,5,3)) == c("FizzBuzz","FizzBuzz","Buzz","Fizz") ))
+stopifnot(all( fizzbuzz_s3(c(1,2,4,7,8)) == c("1","2","4","7","8") ))
+stopifnot(all( fizzbuzz_s3(c(31,29,23,19,17,13)) == c("31","29","23","19","17","13") ))
+```
+
+
+#### Bad Inputs
+
+```{r throws_error}
+#Testing helper function, returns TRUE if expr throws an error FALSE otherwise.
+
+throws_error = function(expr) {
+  inherits(try(expr, silent = TRUE), "try-error")
+}
+```
+
+```{r bad_inputs, error = TRUE}
+
+# Negative inputs
+stopifnot(throws_error( fizzbuzz(-1) ))
+stopifnot(throws_error( fizzbuzz(-3) ))
+stopifnot(throws_error( fizzbuzz(-5) ))
+stopifnot(throws_error( fizzbuzz(-1:3) ))
+stopifnot(throws_error( fizzbuzz(-10:-1) ))
+stopifnot(throws_error( fizzbuzz(c(-3:0,3:15)) ))
+
+stopifnot(throws_error( fizzbuzz_s3(-1) ))
+stopifnot(throws_error( fizzbuzz_s3(-3) ))
+stopifnot(throws_error( fizzbuzz_s3(-5) ))
+stopifnot(throws_error( fizzbuzz_s3(-1:3) ))
+stopifnot(throws_error( fizzbuzz_s3(-10:-1) ))
+stopifnot(throws_error( fizzbuzz_s3(c(-3:0,3:15)) ))
+
+# Double type inputs that cannot be coercible to integer without rounding or truncating
+stopifnot(throws_error( fizzbuzz(1.1) ))
+stopifnot(throws_error( fizzbuzz(3.4) ))
+stopifnot(throws_error( fizzbuzz(5.5) ))
+stopifnot(throws_error( fizzbuzz(9.8) ))
+stopifnot(throws_error( fizzbuzz(3.2:15.7) ))
+stopifnot(throws_error( fizzbuzz(-5.5:29.9) ))
+
+stopifnot(throws_error( fizzbuzz_s3(1.1) ))
+stopifnot(throws_error( fizzbuzz_s3(3.4) ))
+stopifnot(throws_error( fizzbuzz_s3(5.5) ))
+stopifnot(throws_error( fizzbuzz_s3(9.8) ))
+stopifnot(throws_error( fizzbuzz_s3(3.2:15.7) ))
+stopifnot(throws_error( fizzbuzz_s3(-5.5:29.9) ))
+
+# Logical type inputs
+stopifnot(throws_error( fizzbuzz(TRUE) ))
+stopifnot(throws_error( fizzbuzz(FALSE) ))
+stopifnot(throws_error( fizzbuzz_s3(TRUE) ))
+stopifnot(throws_error( fizzbuzz_s3(FALSE) ))
+
+# Infinite inputs
+stopifnot(throws_error( fizzbuzz(Inf) ))
+stopifnot(throws_error( fizzbuzz(-Inf) ))
+stopifnot(throws_error( fizzbuzz_s3(Inf) ))
+stopifnot(throws_error( fizzbuzz_s3(-Inf) ))
+
+# Input is not a number
+stopifnot(throws_error( fizzbuzz(NaN) ))
+stopifnot(throws_error( fizzbuzz_s3(NaN) ))
+
+# Character type inputs
+stopifnot(throws_error( fizzbuzz("A") ))
+stopifnot(throws_error( fizzbuzz("Hi") ))
+stopifnot(throws_error( fizzbuzz_s3("A") ))
+stopifnot(throws_error( fizzbuzz_s3("Hi") ))
+
+# Complex number inputs
+stopifnot(throws_error( fizzbuzz(1i) ))
+stopifnot(throws_error( fizzbuzz(4i) ))
+stopifnot(throws_error( fizzbuzz(3+6i) ))
+stopifnot(throws_error( fizzbuzz(5+9i) ))
+stopifnot(throws_error( fizzbuzz_s3(1i) ))
+stopifnot(throws_error( fizzbuzz_s3(4i) ))
+stopifnot(throws_error( fizzbuzz_s3(3+6i) ))
+stopifnot(throws_error( fizzbuzz_s3(5+9i) ))
+```
