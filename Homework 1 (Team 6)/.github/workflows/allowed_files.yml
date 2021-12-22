@@ -1,0 +1,16 @@
+on: push
+name: Check Allowed Files
+jobs:
+  check:
+    runs-on: self-hosted
+    container:
+      image: ghcr.io/statprog-s1-2020/hw1-docker:latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@master
+    - name: Check Files
+      run: |
+        checklist::quit_on_failure({
+          checklist::check_allowed_files(c("hw1.Rmd", "hw1.Rproj", "README.md", "fizzbuzz.png"))
+        })
+      shell: Rscript {0}
