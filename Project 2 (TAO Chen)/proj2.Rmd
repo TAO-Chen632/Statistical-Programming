@@ -1,0 +1,229 @@
+---
+title: "Project 2: Regression Models in JAGS"
+author: Chen Tao
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include = FALSE, cache = TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rjags)
+library(coda)
+library(rcompanion)
+library(tidyverse)
+library(patchwork)
+```
+
+## Background and models
+
+The `cars` data are from an experiment on the stopping distances of cars from different initial speeds.
+A linear model $E({\tt dist}_i) = \mu_i =  \beta_1 {\tt speed}_i + \beta_2 {\tt speed}_i^2$ is a plausible fit to the data, as illustrated here.
+
+```{r, echo = FALSE, fig.dim = c(5, 4), fig.align = "center"}
+mod <- lm(dist ~ speed + I(speed^2), data = cars)
+with(cars, plot(speed, dist))
+sp <- seq(0, 30, length = 100)
+lines(sp, predict(mod, newdata = data.frame(speed = sp)))
+```
+
+However, notice that the variance in the data may be increasing with the mean. To address this, 3 alternative models for the data will be compared using Bayesian methods. The models are 
+
+1. ${\tt dist}_i \sim N(\mu_i,\sigma^2)$, priors $\beta_1 \sim U(0,2.5)$, $\beta_2 \sim N(0,100)$ and $\log (1/\sigma^2) \sim N(0,100)$.
+
+2. ${\tt dist}_i \sim N(\mu_i,(\beta_3 + \beta_4 {\tt speed}_i)^2)$, priors as above for $\beta_1$ and $\beta_2$. $\beta_3 \sim U(0,20)$ and $\beta_4 \sim U(0,2)$.
+
+3. ${\tt dist}_i \sim \text{Gamma}(\mu_i/\phi,\phi)$ where $\mu_i/\phi$ is the shape parameter and $\phi$ the scale parameter. Priors $\phi \sim U(0,10)$, $\beta_1 \sim U(0,2.5)$, $\log \beta_2 \sim N(-2,100)$.
+
+Gibbs sampling was used for inference as implemented in JAGS, which was here used via package `rjags`. Note that in JAGS normal (and log-normal) densities are parameterized in terms of mean and precision, $\tau = 1/\sigma^2$, while gamma densities are parameterized in terms of shape and rate $= 1/\phi$.
+
+## JAGS model specifications.
+
+In order to implement the Gibbs sampling for the above three models, I have written the JAGS code and they are shown in the following.
+
+```{jags model 1}
+# The JAGS code specifying the first model
+model{
+  for (i in 1:N){
+    mu[i] <- beta_1 * speed[i] + beta_2 * speed[i]^2
+    dist[i] ~ dnorm(mu[i], tau)
+  }
+  beta_1 ~ dunif(0, 2.5)
+  beta_2 ~ dnorm(0, 0.01)
+  log_tau ~ dnorm(0, 0.01)
+  tau <- exp(log_tau)
+}
+```
+
+```{jags model 2}
+# The JAGS code specifying the second model
+model{
+  for (i in 1:N){
+    mu[i] <- beta_1 * speed[i] + beta_2 * speed[i]^2
+    tau[i] <- 1 / ((beta_3 + beta_4 * speed[i])^2)
+    dist[i] ~ dnorm(mu[i], tau[i])
+  }
+  beta_1 ~ dunif(0, 2.5)
+  beta_2 ~ dnorm(0, 0.01)
+  beta_3 ~ dunif(0, 20)
+  beta_4 ~ dunif(0, 2)
+}
+```
+
+```{jags model 3}
+# The JAGS code specifying the third model
+model{
+  for (i in 1:N){
+    mu[i] <- beta_1 * speed[i] + beta_2 * speed[i]^2
+    dist[i] ~ dgamma(mu[i] / phi, 1 / phi)
+  }
+  beta_1 ~ dunif(0, 2.5)
+  log_beta_2 ~ dnorm(-2, 0.01)
+  beta_2 <- exp(log_beta_2)
+  phi ~ dunif(0, 10)
+}
+```
+
+Then, I construct the models using the function `jags.model` in the `rjags` package. Because comparing the performances between different chains is helpful to illustrate the convergence and mixing of the chains and the model comparison via the deviance information criterion (DIC) requires the model to have been compiled by `jags.model` with at least `n.chains = 2`, I set the number of the Markov chains to 2 at first.
+
+```{r, results = "hide"}
+# Construct the models using JAGS
+model_1 <- jags.model("scripts/model_1.jags", data = list(dist = cars$dist, N = length(cars$speed), speed = cars$speed), n.chain = 2)
+model_2 <- jags.model("scripts/model_2.jags", data = list(dist = cars$dist, N = length(cars$speed), speed = cars$speed), n.chain = 2)
+model_3 <- jags.model("scripts/model_3.jags", data = list(dist = cars$dist, N = length(cars$speed), speed = cars$speed), n.chain = 2)
+```
+
+After that, I take samples from the posterior distributions of these models separately using the `coda.samples` function. In order to reduce the autocorrelations and improve the effective sample sizes, the lengths of the chains are set to be 50000 and the argument `thin` is set to be 10, which are subsequently proved to be appropriate run length and thinning.
+
+```{r, results = "hide"}
+# Take samples from the posterior distributions of these three models using `coda.samples`
+sample_1 <- coda.samples(model_1, c("beta_1", "beta_2", "tau"), n.iter = 50000, thin = 10)
+sample_2 <- coda.samples(model_2, c("beta_1", "beta_2", "beta_3", "beta_4"), n.iter = 50000, thin = 10)
+sample_3 <- coda.samples(model_3, c("beta_1", "beta_2", "phi"), n.iter = 50000, thin = 10)
+```
+
+## Simulation and checking
+
+Now, I am going to check the convergence and mixing of the chains for these three models respectively, using all kinds of functions in the `coda` package.
+
+### The first model
+
+The trace plots and the posterior density plots for the sample of the first model are shown below, which indicate good convergence and mixing.
+
+```{r, fig.dim = c(8, 4.5)}
+plot(sample_1)
+```
+
+The autocorrelations of every parameter are displayed in the figure and table below. The behaviors of the two chains are quite similar which illustrates good convergence and mixing of the chains.
+
+From the figure, we can see that the autocorrelation of $\tau$ decreases extremely rapidly as the increase of the lag $k$ and the autocorrelations of $\beta_1$ and $\beta_2$ decrease relatively slowly but steadily, because the argument `thin` is taken a relatively large value which is 10.
+
+The autocorrelation table produced by the function `autocorr` also indicates the cross-correlations among all the parameters. For simplicity, I only display the result of one chain but the outcomes of the two chains are entirely similar. From this table, we can see that there is a high correlation between $\beta_1$ and $\beta_2$ but the correlations between $\tau$ and other parameters are very low.
+
+```{r, fig.dim = c(6, 3)}
+acfplot(sample_1, ylim = c(-0.25, 0.65))
+autocorr(sample_1[1])
+```
+
+The effective sample size of $\tau$ is equal to or near 10000 which is almost perfect, and other parameters', $\beta_1$ and $\beta_2$'s, effective sample sizes are all above 2000.
+
+```{r}
+effectiveSize(sample_1)
+```
+
+### The second model
+
+With respect to the examination of the convergence and mixing of the chains for the second and third model, the same functions in the `coda` package are used and the R code is completely similar. Hence, I hide the R code in these two sections.
+
+The trace plots and posterior density plots for the sample of the second model are shown below, which illustrate good convergence and mixing of the chains.
+
+```{r, echo = FALSE, fig.dim = c(8, 6)}
+plot(sample_2)
+```
+
+The autocorrelations of every parameter are displayed in the following figure and table. The behaviors of the two chains are also very similar which indicates good convergence and mixing of the chains. From the figure, we can see that the autocorrelations of all the parameters decrease steadily as the lag $k$ grows, while the decrease of $\beta_3$ and $\beta_4$ is slightly quicker than $\beta_1$ and $\beta_2$. I also only show the outcome of one chain in the output of the `autocorr` function but the results of the two chains are quite similar. It can be observed from the table that there is a high correlation between $\beta_1$ and $\beta_2$ and between $\beta_3$ and $\beta_4$ but the correlations between $\{\beta_1,\beta_2\}$ and $\{\beta_3,\beta_4\}$ are very low.
+
+```{r, echo = FALSE, fig.dim = c(7.5, 3)}
+acfplot(sample_2, ylim = c(-0.25, 0.65))
+autocorr(sample_2[1])
+```
+
+The effective sample sizes of all the parameters are above 3000. Moreover, the effective sample sizes of $\beta_3$ and $\beta_4$ are larger than $\beta_1$ and $\beta_2$ due to the faster decrease of autocorrelations.
+
+```{r, echo = FALSE}
+effectiveSize(sample_2)
+```
+
+### The third model
+
+The trace plots and the posterior density plots for the sample of the third model are displayed below, which show good convergence and mixing of the chains.
+
+```{r, echo = FALSE, fig.dim = c(8, 4.5)}
+plot(sample_3)
+```
+
+The properties of this model's parameters are similar to the first model, and just like the cases of the above two models, the behaviors of the two chains of this model are also quite similar which demonstrates good convergence and mixing of the chains. The figure below displays the autocorrelations of every parameter. We can see that the autocorrelation of $\phi$ decreases extremely rapidly, and the autocorrelations of $\beta_1$ and $\beta_2$ also decrease steadily but relatively slowly.
+
+```{r, echo = FALSE, fig.dim = c(6, 3)}
+acfplot(sample_3, ylim = c(-0.25, 0.65))
+```
+
+I also use the function `autocorr` to analyze this model but the output of it is omitted here. The result of this function tells us that there is a high correlation between $\beta_1$ and $\beta_2$, and the correlations between $\phi$ and other parameters are much lower but they still have a certain correlations.
+
+```{r, include = FALSE}
+autocorr(sample_3[1])
+```
+
+The effective sample sizes of all the parameters are above 2000, and the parameter $\tau$'s effective sample size is near to or equal to 10000 which is almost perfect because of the rapid decrease of the autocorrelation.
+
+```{r, echo = FALSE}
+effectiveSize(sample_3)
+```
+
+## Model comparison
+
+Finally, in this section, I will evaluate the three models and choose the best one, using the deviance information criterion (DIC). The `dic.samples` function is used to implement DIC to evaluate the models. Just as before, the argument `n.iter` is set to be 50000 and `n.chains` is set to be 2. The lower the deviance is, the better the model.
+
+```{r}
+dic.samples(model_1, n.iter = 50000, n.chains = 2)
+dic.samples(model_2, n.iter = 50000, n.chains = 2)
+dic.samples(model_3, n.iter = 50000, n.chains = 2)
+```
+
+From the output, we can see that the third model has the lowest deviance, so it is the best among all the three models. As a check that the choice is sensible, I also compare the model predictions of the distance versus speed curves produced by a sensible sub-sample of length 100 from each model's posterior.
+
+```{r, echo = FALSE, fig.dim = c(8, 3)}
+# Take a sub-sample of length 100 from each model's posterior
+size <- 100   # The size of the sample
+subsample_1 <- sample_1[[1]][seq(25, 5000, 50), ]
+subsample_2 <- sample_2[[1]][seq(25, 5000, 50), ]
+subsample_3 <- sample_3[[1]][seq(25, 5000, 50), ]
+# The range for the speed of cars
+Speed <- seq(min(cars$speed), max(cars$speed), by = 0.1)
+# Construct the data frames that contain the model predictions of the distance
+pre_dist_1 <- pre_dist_2 <- pre_dist_3 <- data.frame(Speed)
+for (i in 1:size){
+  pre_dist_1[ , i + 1] <- subsample_1[i, 1] * Speed + subsample_1[i, 2] * Speed^2
+  pre_dist_2[ , i + 1] <- subsample_2[i, 1] * Speed + subsample_2[i, 2] * Speed^2
+  pre_dist_3[ , i + 1] <- subsample_3[i, 1] * Speed + subsample_3[i, 2] * Speed^2
+}
+# Construct a function to implement the process of visualization, which can improve the code recycling and code efficiency
+myplot <- function(pre_dist, model){
+  colours = c("blue", "green", "red")
+  p = pre_dist %>%
+    pivot_longer(2:(size + 1), names_to = "Sample", values_to = "Distance") %>%
+    ggplot(aes(x = Speed, y = Distance)) +
+    geom_point(data = cars, aes(x = speed, y = dist), colour = "black") +
+    geom_line(aes(group = Sample), colour = colours[model], size = 0.5, alpha = 0.5) +
+    labs(title = paste("The predictions of the distance\nversus speed for model", model)) +
+    theme(plot.title = element_text(hjust = 0.5, size = 10))
+  return(p)
+}
+# Generate the graphs that we need
+p1 <- myplot(pre_dist_1, model = 1)
+p2 <- myplot(pre_dist_2, model = 2)
+p3 <- myplot(pre_dist_3, model = 3)
+p1 + p2 + p3 + plot_layout(nrow = 1)
+```
+
+From these figures, we can see that the third model can better fit the relationship between the stopping distance and the speed of cars. Consequently, the third model: $\text{dist}_i \sim \text{Gamma}(\mu_i/\phi,\phi)$ is the best.
